@@ -4,11 +4,12 @@ name: package_task
 # 触发workflow的条件, 当前配置为: 当推送如 'release/v1.0.0' 格式的 tag 时 或 拉取 release 分支的代码时触发
 # 构建条件配置文档: https://docs.github.com/en/free-pro-team@latest/actions/reference/events-that-trigger-workflows
 on:
-  pull:
-    - branches:
-      - release
   push:
-    - tags: releases/v[1-9]+.[0-9]+.[0-9]+
+    tags:
+      - releases/v[1-9]+.[0-9]+.[0-9]+
+  pull_request:
+    branches:
+      - main
 
 # 构建过程所执行的任务
 jobs:
