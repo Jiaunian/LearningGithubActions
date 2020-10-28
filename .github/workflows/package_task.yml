@@ -1,26 +1,28 @@
-# This is a basic workflow to help you get started with Actions
-
+# 工作流程的名称, 显示在 ${github repo url}/actions/Workflows的列表
 name: package_task
 
-# Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the main branch
+# 触发workflow的条件, 当前配置为: 当推送如 'release/v1.0.0' 格式的 tag 时 或 拉取 release 分支的代码时触发
+# 构建条件配置文档: https://docs.github.com/en/free-pro-team@latest/actions/reference/events-that-trigger-workflows
 on:
+  pull:
+    - branches:
+      - release
   push:
-    branches: main
-    tags: v*
+    - tags: releases/v[1-9]+.[0-9]+.[0-9]+
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+# 构建过程所执行的任务
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  # 因为打包可能需要打多个应用的包, 也就是同一个项目下有多个 application时需要先把代码拉下来
+  clone_project:
+    # 该 job 运行的系统环境, Github托管的运行器支持 ubuntu/windows/macOS
+    # 详细支持的版本请查看 https://docs.github.com/cn/free-pro-team@latest/actions/reference/workflow-syntax-for-github-actions
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    # 以下该 clone_project 任务的多个步骤
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - name: clone project code
+        uses: actions/checkout@v2
 
       # Runs a single command using the runners shell
       - name: Run a one-line script
-        run: echo Hello, world!
+        run: echo github.ref
