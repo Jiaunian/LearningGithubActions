@@ -16,7 +16,5 @@
 # Idea
 .idea
 *.iml
-build/
-**/build/*
 
 keystore/
