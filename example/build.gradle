@@ -1,0 +1,74 @@
+import com.j3dream.android.build.Dependencies
+import com.j3dream.android.build.Modules
+
+apply from: "${project.rootDir.path}/buildSrc/buildApp.gradle"
+
+// 加载仓库的密钥配置
+def keyProps = new Properties()
+def keyPropsFile = rootProject.file('keystore/lumotime.properties')
+if (keyPropsFile.exists()) {
+    keyProps.load(new FileInputStream(keyPropsFile))
+}
+
+android {
+
+    defaultConfig {
+        applicationId Modules.M_example.applicationId
+    }
+
+    // 配置打包使用的密钥
+    signingConfigs {
+        lumotime {
+            keyAlias keyProps['keyAlias']
+            keyPassword keyProps['keyPassword']
+            storeFile keyProps['storeFile'] ? file(keyProps['storeFile']) : null
+            storePassword keyProps['storePassword']
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.lumotime
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+
+        debug {
+            signingConfig signingConfigs.lumotime
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    flavorDimensions Modules.M_example.versionName
+
+    productFlavors{
+        first_app {
+            def package_name = Modules.M_example.applicationId + ".first"
+            manifestPlaceholders = [str:"first_app",package_name: package_name]
+            applicationId package_name
+        }
+
+        last_app{
+            def package_name = Modules.M_example.applicationId + ".last"
+            manifestPlaceholders = [str:"last_app",package_name: package_name]
+            applicationId package_name
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+}
+
+dependencies {
+    implementation(Dependencies.kotlin_stdlib)
+    implementation(Dependencies.AndroidX.core_ktx)
+    implementation(Dependencies.AndroidX.appcompat)
+    implementation(Dependencies.AndroidX.constraintlayout)
+    implementation(Dependencies.FrameWork.core)
+}

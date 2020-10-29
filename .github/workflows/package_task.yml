@@ -1,0 +1,141 @@
+# 工作流程的名称, 显示在 ${github repo url}/actions/Workflows的列表
+name: package_task
+
+# 触发workflow的条件, 当前配置为: 当推送如 'v1.0.0' 格式的 tag 时触发工作流程
+# 构建条件配置文档: https://docs.github.com/en/free-pro-team@latest/actions/reference/events-that-trigger-workflows
+on:
+  push:
+    tags:
+      - v[1-9]+.[0-9]+.[0-9]+
+
+# 构建过程所执行的任务
+jobs:
+  # 因为打包可能需要打多个应用的包, 也就是同一个项目下有多个 application时需要先把代码拉下来
+  build_project:
+    # 该 job 运行的系统环境, Github托管的运行器支持 ubuntu/windows/macOS
+    # 详细支持的版本请查看 https://docs.github.com/cn/free-pro-team@latest/actions/reference/workflow-syntax-for-github-actions
+    runs-on: ubuntu-latest
+
+    # 以下该 clone_project 任务的多个步骤
+    steps:
+      # 打印工作流程中的信息，定义: https://docs.github.com/en/free-pro-team@latest/actions/reference/environment-variables
+      - name: Run a one-line script
+        run: |
+          echo ID ${GITHUB_RUN_ID}, REF ${GITHUB_REF}
+          echo SHA ${GITHUB_SHA}, ACTOR ${GITHUB_REPOSITORY}, GITHUB_REPOSITORY ${GITHUB_REPOSITORY}
+
+      # 克隆当前项目, 默认为 ${GITHUB_REPOSITORY}
+      - name: clone project code
+        uses: actions/checkout@v2
+      
+      # 克隆私有的密钥库, 用于打包时签名. 该仓库为私有库
+      - name: clone project keystore
+        uses: actions/checkout@v2
+        with:
+          repository: lumotime/lumotimeKeystore
+          path: keystore
+          token: ${{secrets.GIT_TOKEN}}
+      
+      # 设置 JDK 环境为 JDK1.8
+      - name: set up JDK 1.8
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      
+      # 使用 gradlew assembleRelease 打 release 包
+      - name: Build with Gradle generate modules apks
+        run: chmod +x gradlew &&./gradlew clean assembleRelease --stacktrace
+
+      # 上传 first apk 到 github actions 的制品库
+      - name: upload first app to github Actions
+        uses: actions/upload-artifact@v2
+        with:
+          name: example-first_app-release
+          path: example/build/outputs/apk/first_app/release/example-first_app-release.apk
+
+      # 上传 last apk 到 github actions的制品库
+      - name: upload last app to github Actions
+        uses: actions/upload-artifact@v2
+        with:
+          name: example-last_app-release
+          path: example/build/outputs/apk/last_app/release/example-last_app-release.apk
+    
+  upload_first_app:
+    runs-on: ubuntu-latest
+    needs: build_project
+    steps:
+
+      # 从制品库中拉取得 first apk 并进行后续操作
+      - name: download first apk
+        uses: actions/download-artifact@v2
+        with:
+          name: example-first_app-release
+
+      - name: fetch github ref
+        id: REF
+        run: echo "::set-output name=ref::${GITHUB_REF}"
+
+      # 自定义的 action用于获取apk中的信息, 使用请看 https://github.com/lumotime/get-apk-info-action.
+      - name: get first app info
+        id: app_info
+        uses: lumotime/get-apk-info-action@v1.0.0
+        with:
+          apkPath: example-first_app-release.apk
+
+      # 上传 apk 到 蒲公英. secrets 配置请看下面 私密信息配置
+      # 蒲公英接口参数请看: https://www.pgyer.com/doc/view/api#paramInfo 上传 App接口部分
+      # action 使用示例请看  https://github.com/lumotime/upload-pgyer-apk-file
+      - name: upload first app to Pgyer
+        id: upload_pgyer
+        uses: lumotime/upload-pgyer-apk-file@v1.0.0
+        with: 
+          forms: '{"_api_key":"${{secrets.pgyer_key}}","buildInstallType":2, "buildPassword": "${{secrets.pgyer_install_password}}"}'
+          fileForms: '{"file":"example-first_app-release.apk"}'
+
+      - name: dingtalk notification
+        uses: lumotime/webrequest-action@v1.2.4
+        with: 
+          url: ${{secrets.dingtalk_webhook}}
+          method: POST
+          payload: '{"msgtype":"markdown","markdown":{"title":"应用版本更新","text":"#### **FIRST测试应用版本更新** \n\n**应用名称**: ${{ steps.app_info.outputs.name }} \n\n **包名**:${{ steps.app_info.outputs.applicationId }} \n\n**版本编号**:${{ steps.app_info.outputs.versionCode }} \n\n**版本名称**:${{ steps.app_info.outputs.versionName }} \n\n**最小版本要求**:${{ steps.app_info.outputs.minSdkVersion }} \n\n**编译目标版本**:${{ steps.app_info.outputs.targetSdkVersion }} \n\n**安装包名称**:${{ steps.upload_pgyer.outputs.filename }} \n\n**安装包大小**:  ${{ steps.upload_pgyer.outputs.fileSize }}\n\n**更新时间**: ${{ steps.upload_pgyer.outputs.updatedTime }}\n\n**触发**: ${{steps.REF.outputs.ref}} \n\n**邀请函**: \n\n ![邀请函](${{ steps.upload_pgyer.outputs.invitationQRCode }})"}}'
+          headers: '{"Content-Type": "application/json"}'
+  
+  upload_last_app:
+    runs-on: ubuntu-latest
+    needs: build_project
+    steps:
+
+      # 从制品库中拉取得 last apk 并进行后续操作
+      - name: download last apk
+        uses: actions/download-artifact@v2
+        with:
+          name: example-last_app-release
+
+      - name: fetch github ref
+        id: REF
+        run: echo "::set-output name=ref::${GITHUB_REF}"
+
+      # 自定义的 action用于获取apk中的信息, 使用请看 https://github.com/lumotime/get-apk-info-action.
+      - name: get last app info
+        id: app_info
+        uses: lumotime/get-apk-info-action@v1.0.0
+        with:
+          apkPath: example-last_app-release.apk
+
+      # 上传 apk 到 蒲公英. secrets 配置请看下面 私密信息配置
+      # 蒲公英接口参数请看: https://www.pgyer.com/doc/view/api#paramInfo 上传 App接口部分
+      # action 使用示例请看  https://github.com/lumotime/upload-pgyer-apk-file
+      - name: upload last app to Pgyer
+        id: upload_pgyer
+        uses: lumotime/upload-pgyer-apk-file@v1.0.0
+        with: 
+          forms: '{"_api_key":"${{secrets.pgyer_key}}","buildInstallType":2, "buildPassword": "${{secrets.pgyer_install_password}}"}'
+          fileForms: '{"file":"example-last_app-release.apk"}'
+
+      - name: dingtalk notification
+        uses: lumotime/webrequest-action@v1.2.4
+        with: 
+          url: ${{secrets.dingtalk_webhook}}
+          method: POST
+          payload: '{"msgtype":"markdown","markdown":{"title":"应用版本更新","text":"#### **LAST测试应用版本更新** \n\n**应用名称**: ${{ steps.app_info.outputs.name }} \n\n **包名**:${{ steps.app_info.outputs.applicationId }} \n\n**版本编号**:${{ steps.app_info.outputs.versionCode }} \n\n**版本名称**:${{ steps.app_info.outputs.versionName }} \n\n**最小版本要求**:${{ steps.app_info.outputs.minSdkVersion }} \n\n**编译目标版本**:${{ steps.app_info.outputs.targetSdkVersion }} \n\n**安装包名称**:${{ steps.upload_pgyer.outputs.filename }} \n\n**安装包大小**:  ${{ steps.upload_pgyer.outputs.fileSize }}\n\n**更新时间**: ${{ steps.upload_pgyer.outputs.updatedTime }}\n\n**触发**: ${{steps.REF.outputs.ref}} \n\n**邀请函**: \n\n ![邀请函](${{ steps.upload_pgyer.outputs.invitationQRCode }})"}}'
+          headers: '{"Content-Type": "application/json"}'
